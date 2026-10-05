@@ -1,0 +1,8 @@
+# Maps robot id (must match ROBOT_ID in the Arduino sketch) to a ROS namespace.
+# The bridge subscribes to <namespace>/cmd_vel for each entry and sends
+# "CMD <id> <linear_x> <linear_y> <angular_z>\n" over the shared XBee serial.
+robots:
+  - id: 1
+    namespace: nester_1
+  - id: 2
+    namespace: nester_2
