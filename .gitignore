@@ -5,3 +5,5 @@ log/
 __pycache__/
 .vscode/
 .DS_Store
+# WiFi credentials (copy of secrets.example.h)
+firmware/herover_esp32/secrets.h

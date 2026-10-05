@@ -19,7 +19,7 @@ setup(
     zip_safe=True,
     maintainer='morsag',
     maintainer_email='matko.orsag@gmail.com',
-    description='ROS 2 Twist to serial bridge for Arduino mobile robot control',
+    description='ROS 2 cmd_vel to WiFi (UDP) bridge for the herover mecanum robot',
     license='Apache-2.0',
     extras_require={
         'test': [
@@ -28,7 +28,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
-        'twist_serial_bridge = herover.twist_serial_bridge:main',
+            'cmd_vel_bridge = herover.cmd_vel_bridge:main',
         ],
     },
 )

@@ -1,8 +1,18 @@
-# Maps robot id (must match ROBOT_ID in the Arduino sketch) to a ROS namespace.
-# The bridge subscribes to <namespace>/cmd_vel for each entry and sends
-# "CMD <id> <linear_x> <linear_y> <angular_z>\n" over the shared XBee serial.
+# One entry per herover. The cmd_vel_bridge subscribes to
+# /<namespace>/cmd_vel and sends every Twist as one UDP datagram
+#   "CMD <id> <vx> <vy> <wz>\n"   (m/s, m/s, rad/s)
+# to <host>:<udp_port>, where the robot's ESP32 listens.
+#   id   - must match ROBOT_ID in firmware/herover_esp32/config.h
+#   host - the ESP32's IP (printed on its USB serial at connect), or a
+#          hostname that resolves on this machine, e.g. herover-1.local via
+#          mDNS (usually not inside Docker — use the IP there)
+#   port - optional per-robot override of udp_port
+udp_port: 5005
+
 robots:
   - id: 1
-    namespace: nester_1
+    namespace: herover_1
+    host: 192.168.1.101   # TODO: herover_1's ESP32 address
   - id: 2
-    namespace: nester_2
+    namespace: herover_2
+    host: 192.168.1.102   # TODO: herover_2's ESP32 address

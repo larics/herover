@@ -1,32 +1,143 @@
+# herover
 
-Download these two as zip and add to 
+Drive stack for the herover mecanum robot: a ROS 2 bridge plus firmware for
+the robot's two boards.
 
-https://github.com/akira215/HalfDuplexSerial-for-Arduino
-https://github.com/akira215/DynamixelArduino
-
-Run the bridge (one XBee, multiple robots — set `config_file` to your YAML):
-
-```bash
-ros2 run herover twist_serial_bridge \
-  --ros-args \
-  -p port:=/dev/ttyUSB0 \
-  -p baud:=115200 \
-  -p config_file:=$(ros2 pkg prefix herover)/share/herover/config/robots.yaml
+```
+ROS 2 host ── /herover_N/cmd_vel (Twist) ──► cmd_vel_bridge          herover/cmd_vel_bridge.py
+   ── WiFi, UDP unicast :5005 ── "CMD <id> <vx> <vy> <wz>\n" ──► ESP32     firmware/herover_esp32
+   ── UART 115200 8N1 ────────── "CMD <vx> <vy> <wz>\n" ──────► OpenRB-150 firmware/herover_openrb
+   ── mecanum IK (SI) → rpm ── DYNAMIXEL bus, Protocol 2.0, 57600 ──► 4× XL430-W250
 ```
 
-Drive a specific robot by publishing to its namespaced topic:
+- **OpenRB-150** is the motor controller. It owns the robot's kinematics and
+  runs the same firmware on every robot (it has no robot id).
+- **ESP32** is only the WiFi link: it forwards commands for its `ROBOT_ID`
+  to the OpenRB. It can be replaced by an RPi later (see below) without
+  touching the OpenRB.
+- Every command is used. Nothing is suppressed for being identical to the
+  previous one, so a datagram lost on WiFi is replaced by the next.
+- The robots never reply: nothing is sent back over WiFi or the UART.
+  Diagnostics go to each board's own USB serial.
+
+## Wire protocol
+
+All values are ASCII decimal, separated by spaces, one command per line /
+datagram. Units follow REP-103: `vx`, `vy` in m/s and `wz` in rad/s, body
+frame (x forward, y left, z counter-clockwise), exactly as in the Twist
+(`linear.x`, `linear.y`, `angular.z`).
+
+| Link | Format | Notes |
+|---|---|---|
+| host → ESP32 (UDP) | `CMD <id> <vx> <vy> <wz>\n` | ESP32 drops it unless `<id>` == its `ROBOT_ID` (guards against swapped IPs) |
+| ESP32 → OpenRB (UART) | `CMD <vx> <vy> <wz>\n` | exactly three numbers; a line with the id still in it is rejected |
+| USB → OpenRB (bench) | `CMD <vx> <vy> <wz>\n` or `STOP\n` | type into a serial monitor at 115200 |
+
+Malformed lines (missing/extra fields, non-numbers, NaN/inf) are dropped.
+There is no command timeout: the robot holds the last command it received.
+
+## Wiring
+
+| ESP32 (NodeMCU-32S) | OpenRB-150 |
+|---|---|
+| GPIO17 (TX) | UART header RX (`Serial2`) |
+| GND | UART header GND |
+
+- Only one data wire is needed; ESP32 RX stays unconnected. Match RX/GND by
+  the OpenRB silkscreen. If the header is taken, `Serial3` (pin 13 RX) works
+  too: change `CMD_SERIAL` in `firmware/herover_openrb/config.h`.
+- Both boards use 3.3 V logic, so no level shifter is needed.
+- Power the ESP32 from its own USB or a 5 V regulator. The OpenRB's 5 V pin
+  is rated for 150 mA, below the ESP32's WiFi transmit peaks.
+- Other ESP32 chips work with the same sketch; only the UART pins differ.
+  `config.h` picks the defaults per chip (ESP32: RX 16 / TX 17, S2/S3: 18 / 17,
+  C3/C6: 4 / 5) and can override them.
+
+## Flashing
+
+### OpenRB-150 (`firmware/herover_openrb`)
+
+1. Arduino IDE → Preferences → Additional Boards Manager URLs:
+   `https://raw.githubusercontent.com/ROBOTIS-GIT/OpenRB-150/master/package_openrb_index.json`.
+   Install **OpenRB-150** in the Boards Manager and **Dynamixel2Arduino** in
+   the Library Manager.
+2. Set the XL430s up once with DYNAMIXEL Wizard (they ship as ID 1): IDs
+   **3 front-left, 4 front-right, 1 rear-left, 2 rear-right**, baud 57600
+   (factory default), Protocol 2.0.
+3. Fill in the `TODO measure` geometry in `config.h`: `WHEEL_RADIUS_M`,
+   `HALF_WHEELBASE_M` (centre to axle), `HALF_TRACK_M` (centre to wheel), and
+   `MAX_WHEEL_RPM` for your supply voltage (keep it below the motors'
+   Velocity Limit, 60.7 rpm by default).
+4. Open `herover_openrb.ino`, board **OpenRB-150**, upload.
+
+At boot the USB serial prints `DXL id N not found` for any missing motor and
+then `herover_openrb ready`. Motors must be powered before the OpenRB boots
+(or press reset): a motor absent at boot is skipped until the next reset.
+
+### ESP32 (`firmware/herover_esp32`)
+
+1. Additional Boards Manager URL
+   `https://espressif.github.io/arduino-esp32/package_esp32_index.json`, then
+   install **esp32** by Espressif.
+2. Copy `secrets.example.h` to `secrets.h` (gitignored) and set the WiFi
+   SSID and password.
+3. In `config.h` set `ROBOT_ID` (unique per robot, matches `id` in
+   `config/robots.yaml`). Optionally set `USE_STATIC_IP`. Otherwise use DHCP
+   and reserve the address on the router so `robots.yaml` stays valid.
+4. Board **NodeMCU-32S** (or your chip), upload.
+
+At connect the USB serial prints `WiFi up: herover-<ID>  ip <addr>  udp port 5005`.
+Every 5 s while traffic flows it prints received / forwarded / bad /
+wrong-id counts. The board also answers mDNS as `herover-<ID>.local`.
+
+## ROS 2
+
+```bash
+colcon build --packages-select herover --symlink-install && source install/setup.bash
+ros2 run herover cmd_vel_bridge          # uses share/herover/config/robots.yaml
+ros2 run herover cmd_vel_bridge --ros-args -p config_file:=/path/to/robots.yaml
+```
+
+With `--symlink-install` the installed `robots.yaml` is a symlink to
+`config/robots.yaml`, so edits only need a bridge restart, not a rebuild
+(rebuild only when adding new config files). If the package was previously
+built without it, run `rm -rf build/herover install/herover` once first.
+
+Set each robot's `host` (the ESP32 IP) in `config/robots.yaml`. The bridge
+subscribes to `/<namespace>/cmd_vel`, which matches what the
+hero_mrs_control_stack `Herover` agent publishes (`/herover_N/cmd_vel`). Each
+Twist is sent immediately as one datagram. An unresolvable host is retried
+every 2 s, so robots can come up after the bridge. The bridge logs a
+per-robot count every 5 s while sending.
+
+Manual driving:
 
 ```bash
 ros2 run teleop_twist_keyboard teleop_twist_keyboard \
-  --ros-args -r __ns:=/robot1 -p speed:=0.15 -p turn:=0.5 -p holonomic:=true
+  --ros-args -r __ns:=/herover_1 -p speed:=0.10 -p turn:=0.5
 ```
 
-## Wire format
+## Bring-up checklist
 
-Each line sent over the shared XBee serial:
+1. **OpenRB alone.** USB serial monitor at 115200, send `CMD 0.05 0 0`: all
+   four wheels roll forward. Try `CMD 0 0.05 0` (strafe left) and
+   `CMD 0 0 0.5` (turn CCW), then `STOP`. If a wheel turns the wrong way, flip
+   its `INVERT_*` in `config.h`.
+2. **ESP32 → OpenRB.** From the host:
+   `echo "CMD 1 0.05 0 0" | nc -u -w0 <esp32-ip> 5005`, then
+   `echo "CMD 1 0 0 0" | nc -u -w0 <esp32-ip> 5005`.
+3. **ROS 2.** Run the bridge and teleop as above.
 
-```
-CMD <id> <linear_x> <linear_y> <angular_z>\n
-```
+## Units and speeds
 
-`<id>` matches `ROBOT_ID` in the Arduino sketch. `0` is broadcast (every robot acts on it). Edit `config/robots.yaml` to change the id → namespace mapping; set `ROBOT_ID` in `libs/normal_mode.ino` per robot before flashing.
+Commands are real SI units now: `speed: 0.25` in a stack config means
+0.25 m/s. The top speed is `MAX_WHEEL_RPM · 2π · WHEEL_RADIUS_M / 60`
+(about 0.17 m/s with the placeholder 30 mm wheel at 55 rpm). Faster commands are
+scaled down on all four wheels together, keeping the direction of travel.
+
+## Replacing the ESP32 with a Raspberry Pi
+
+The UART line protocol is the contract. An RPi wired to the same OpenRB
+header (TX → RX, GND) only has to write `CMD <vx> <vy> <wz>\n` at 115200,
+e.g. a ROS 2 node on the RPi subscribing to `cmd_vel` and writing to
+`/dev/serial0`. The OpenRB firmware stays as it is.
