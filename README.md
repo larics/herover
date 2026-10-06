@@ -57,10 +57,13 @@ There is no command timeout: the robot holds the last command it received.
 
 ### OpenRB-150 (`firmware/herover_openrb`)
 
-1. Arduino IDE → Preferences → Additional Boards Manager URLs:
-   `https://raw.githubusercontent.com/ROBOTIS-GIT/OpenRB-150/master/package_openrb_index.json`.
-   Install **OpenRB-150** in the Boards Manager and **Dynamixel2Arduino** in
-   the Library Manager.
+1. The Boards Manager lists only Arduino's own boards until the ROBOTIS
+   package URL is added. In Arduino IDE 2: **File → Preferences…** (Ctrl+,),
+   and in **Additional boards manager URLs** at the bottom add
+   `https://raw.githubusercontent.com/ROBOTIS-GIT/OpenRB-150/master/package_openrb_index.json`
+   (one URL per line if the field already has one). Click **OK** and wait for
+   the index download to finish, then install **OpenRB-150 by ROBOTIS** in the
+   Boards Manager and **Dynamixel2Arduino** in the Library Manager.
 2. Set the XL430s up once with DYNAMIXEL Wizard (they ship as ID 1): IDs
    **3 front-left, 4 front-right, 1 rear-left, 2 rear-right**, baud 57600
    (factory default), Protocol 2.0.
@@ -68,7 +71,10 @@ There is no command timeout: the robot holds the last command it received.
    `HALF_WHEELBASE_M` (centre to axle), `HALF_TRACK_M` (centre to wheel), and
    `MAX_WHEEL_RPM` for your supply voltage (keep it below the motors'
    Velocity Limit, 60.7 rpm by default).
-4. Open `herover_openrb.ino`, board **OpenRB-150**, upload.
+4. Open `herover_openrb.ino`, select board **OpenRB-150** on its port
+   (`/dev/ttyACM0` or similar on Linux), upload. On Linux, if the port is
+   missing or the upload fails with "permission denied", run
+   `sudo usermod -aG dialout $USER` and log out and back in.
 
 At boot the USB serial prints `DXL id N not found` for any missing motor and
 then `herover_openrb ready`. Motors must be powered before the OpenRB boots
@@ -119,6 +125,11 @@ ros2 run teleop_twist_keyboard teleop_twist_keyboard \
 
 ## Bring-up checklist
 
+0. **Motors alone.** Upload `firmware/herover_openrb_motor_test` with the
+   robot on blocks. After reset it runs each wheel forward then backward,
+   one at a time (FL, FR, RL, RR), and then stops. Each wheel should roll the
+   robot forward in its forward phase. The USB serial at 115200 shows the
+   wheel name and measured rpm. Re-flash `herover_openrb` afterwards.
 1. **OpenRB alone.** USB serial monitor at 115200, send `CMD 0.05 0 0`: all
    four wheels roll forward. Try `CMD 0 0.05 0` (strafe left) and
    `CMD 0 0 0.5` (turn CCW), then `STOP`. If a wheel turns the wrong way, flip
