@@ -116,6 +116,30 @@ Twist is sent immediately as one datagram. An unresolvable host is retried
 every 2 s, so robots can come up after the bridge. The bridge logs a
 per-robot count every 5 s while sending.
 
+### Robot addressing
+
+ROS code only publishes to `/herover_N/cmd_vel`; it never talks to an ESP32
+directly. Each `robots.yaml` entry ties the three together:
+
+```
+namespace herover_1 ──► id 1 ──► host 192.168.1.101 (UDP unicast)
+```
+
+Routing is by IP: each Twist goes only to its robot's `host`. The id is a
+check. The ESP32 drops a datagram whose id is not its `ROBOT_ID` and counts
+it as `wrong_id` on its USB serial, so swapped IPs leave the robots still
+instead of driving the wrong one. The OpenRB has no id. Per robot, these must
+match:
+
+| `robots.yaml` | must equal |
+|---|---|
+| `namespace` | the topic namespace your ROS code publishes to |
+| `id` | `ROBOT_ID` in the ESP32's `config.h` |
+| `host` | that ESP32's IP (printed at connect), or `herover-<id>.local` |
+
+To add a robot: flash its ESP32 with a new `ROBOT_ID`, reserve its IP on the
+router, add the entry to `robots.yaml`, and restart the bridge.
+
 Manual driving:
 
 ```bash
