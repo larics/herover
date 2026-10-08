@@ -35,6 +35,24 @@
   #endif
 #endif
 
+// ---------------- status LED ----------------
+// 1 = light the onboard LED for LED_PULSE_MS after each command forwarded to
+// the OpenRB: one flash per command, steady while commands stream faster.
+#define USE_STATUS_LED 1
+#define LED_PULSE_MS   50
+
+// Uncomment to override: the board's LED_BUILTIN, else GPIO2. "ESP32 Dev
+// Module" defines no LED_BUILTIN, but most such boards have the LED on GPIO2.
+// #define STATUS_LED_PIN 2
+
+#ifndef STATUS_LED_PIN
+  #ifdef LED_BUILTIN
+    #define STATUS_LED_PIN LED_BUILTIN
+  #else
+    #define STATUS_LED_PIN 2
+  #endif
+#endif
+
 // ---------------- network ----------------
 // 0 = DHCP (reserve the address on the router so robots.yaml stays valid).
 // 1 = fixed address below. Either way the IP is printed on USB at connect.

@@ -8,8 +8,9 @@
 //
 // Every valid datagram addressed to ROBOT_ID is forwarded, including one
 // identical to the previous. Nothing is ever transmitted back over WiFi;
-// diagnostics go to USB Serial only. Works on any ESP32 variant — only the
-// UART pins differ (see config.h).
+// diagnostics go to USB Serial only. The onboard LED flashes for each
+// forwarded command. Works on any ESP32 variant — only the UART pins differ
+// (see config.h).
 
 #include <ESPmDNS.h>
 #include <WiFi.h>
@@ -37,6 +38,28 @@ uint32_t lastReconnectMs = 0;
 // Diagnostics (USB only).
 uint32_t nRx = 0, nFwd = 0, nBad = 0, nWrongId = 0;
 uint32_t lastStatsMs = 0, lastStatsRx = 0;
+
+bool ledLit = false;
+uint32_t ledOnMs = 0;
+
+// ---------------- status LED ----------------
+
+void flashLed() {
+#if USE_STATUS_LED
+  digitalWrite(STATUS_LED_PIN, HIGH);
+  ledLit = true;
+  ledOnMs = millis();
+#endif
+}
+
+void serviceLed() {
+#if USE_STATUS_LED
+  if (ledLit && millis() - ledOnMs >= LED_PULSE_MS) {
+    digitalWrite(STATUS_LED_PIN, LOW);
+    ledLit = false;
+  }
+#endif
+}
 
 // ---------------- parsing ----------------
 
@@ -86,6 +109,7 @@ void handleDatagram(char* msg) {
   }
   OpenRB.write((const uint8_t*)line, len);
   nFwd++;
+  flashLed();
 }
 
 void pollUdp() {
@@ -163,6 +187,10 @@ void printStats() {
 
 void setup() {
   Serial.begin(115200);  // USB diagnostics only
+#if USE_STATUS_LED
+  pinMode(STATUS_LED_PIN, OUTPUT);
+  digitalWrite(STATUS_LED_PIN, LOW);
+#endif
   OpenRB.begin(OPENRB_BAUD, SERIAL_8N1, OPENRB_RX_PIN, OPENRB_TX_PIN);
   setupWiFi();
 }
@@ -170,6 +198,7 @@ void setup() {
 void loop() {
   serviceWiFi();
   if (netStarted) pollUdp();
+  serviceLed();
   printStats();
   delay(1);  // let the idle task run (single-core C3/C6); lwIP queues datagrams meanwhile
 }

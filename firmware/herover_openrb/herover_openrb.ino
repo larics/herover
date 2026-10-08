@@ -6,8 +6,8 @@
 //   CMD <vx> <vy> <wz>\n    m/s, m/s, rad/s (REP-103: x fwd, y left, z CCW)
 //   STOP\n                  all wheels to zero
 //
-// Lines come from CMD_SERIAL (the ESP32 — or later an RPi — on the UART
-// header) and from USB Serial (bench testing from a serial monitor). Every
+// Lines come from CMD_SERIAL (the ESP32 — or later an RPi — on pin 13 RX)
+// and from USB Serial (bench testing from a serial monitor). Every
 // valid line is applied, including one identical to the previous. Nothing is
 // ever written back to CMD_SERIAL; diagnostics go to USB only.
 

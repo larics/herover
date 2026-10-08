@@ -34,7 +34,8 @@ changing anything that crosses a board boundary.
   `firmware/herover_esp32/config.h` (`ROBOT_ID`) and `config/robots.yaml`.
 - Each Arduino sketch is self-contained in a folder named like its `.ino`; it
   cannot include files from a sibling sketch. The motor test copies the motor
-  IDs and `INVERT_*` flags from `herover_openrb/config.h`: keep them in sync.
+  IDs, `INVERT_*` flags and `DXL_BAUD` from `herover_openrb/config.h`: keep
+  them in sync.
 - `MAX_WHEEL_RPM` must stay below the XL430 Velocity Limit (60.7 rpm factory).
 
 ## Rules

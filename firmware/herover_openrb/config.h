@@ -29,12 +29,12 @@
 #define INVERT_RR true
 
 #define DXL_PROTOCOL 2.0f   // X-series (XL430, XL330, XM430, ...)
-#define DXL_BAUD     57600  // XL430 factory default; 1000000 also works if set in Dynamixel Wizard
+#define DXL_BAUD     1000000  // must match the motors' Baud Rate (XL430 factory default: 57600)
 
 // ---------------- command link ----------------
-// Serial2 is the OpenRB-150's dedicated 3.3 V UART header. Serial3 (pins
-// 13 RX / 14 TX) is an alternative if the header is taken.
-#define CMD_SERIAL   Serial2
+// Serial3 is edge pins 13 RX / 14 TX; only pin 13 (RX) is wired. Serial2,
+// the separate 4-pin UART header, is an alternative.
+#define CMD_SERIAL   Serial3
 #define CMD_BAUD     115200
 
 // 1 = echo every applied command on USB Serial (never on CMD_SERIAL).
