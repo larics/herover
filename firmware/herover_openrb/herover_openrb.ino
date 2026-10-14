@@ -55,23 +55,41 @@ LineReader usbLink = {&Serial, {0}, 0, false};
 
 // ---------------- motors ----------------
 
+// Velocity mode, torque on, stopped. False if the motor does not answer.
+bool setupMotor(uint8_t id) {
+  if (!dxl.ping(id)) return false;
+  dxl.torqueOff(id);
+  dxl.setOperatingMode(id, OP_VELOCITY);
+  dxl.torqueOn(id);
+  dxl.setGoalVelocity(id, 0);
+  return true;
+}
+
 void setupMotors() {
   dxl.begin(DXL_BAUD);
   dxl.setPortProtocolVersion(DXL_PROTOCOL);
 
-  for (int i = 0; i < 4; i++) {
-    const uint8_t id = MOTORS[i].id;
-    if (!dxl.ping(id)) {
-      Serial.print("DXL id ");
-      Serial.print(id);
-      Serial.println(" not found");
-      continue;
+  // dxl.begin() switches on the motor power and waits 500 ms. A motor that
+  // is still not answering is retried for up to DXL_BOOT_WAIT_MS. With all
+  // four answering this returns on the first round.
+  const unsigned long start = millis();
+  int found = 0;
+  while (true) {
+    for (int i = 0; i < 4; i++) {
+      if (!present[i] && setupMotor(MOTORS[i].id)) {
+        present[i] = true;
+        found++;
+      }
     }
-    dxl.torqueOff(id);
-    dxl.setOperatingMode(id, OP_VELOCITY);
-    dxl.torqueOn(id);
-    dxl.setGoalVelocity(id, 0);
-    present[i] = true;
+    if (found == 4 || millis() - start >= DXL_BOOT_WAIT_MS) break;
+    delay(50);
+  }
+
+  for (int i = 0; i < 4; i++) {
+    if (present[i]) continue;
+    Serial.print("DXL id ");
+    Serial.print(MOTORS[i].id);
+    Serial.println(" not found");
   }
 }
 
@@ -157,8 +175,10 @@ void poll(LineReader& r) {
 
 void setup() {
   Serial.begin(115200);  // USB: bench commands + diagnostics; never waited on
-  CMD_SERIAL.begin(CMD_BAUD);
   setupMotors();
+  // Opened only now: commands sent while the motors were being found are
+  // dropped instead of queued and applied seconds late.
+  CMD_SERIAL.begin(CMD_BAUD);
   Serial.println("herover_openrb ready");
 }
 

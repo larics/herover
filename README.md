@@ -50,6 +50,10 @@ There is no command timeout: the robot holds the last command it received.
 - Both boards use 3.3 V logic, so no level shifter is needed.
 - Power the ESP32 from its own USB or a 5 V regulator. The OpenRB's 5 V pin
   is rated for 150 mA, below the ESP32's WiFi transmit peaks.
+- **Power up the OpenRB first, then the ESP32.** A running ESP32 holds its
+  TX line high and feeds current into the still-unpowered OpenRB through
+  pin 13. The OpenRB then does not start cleanly and only runs after a
+  press of its reset button.
 - Other ESP32 chips work with the same sketch; only the UART pins differ.
   `config.h` picks the defaults per chip (ESP32: RX 16 / TX 17, S2/S3: 18 / 17,
   C3/C6: 4 / 5) and can override them.
@@ -78,9 +82,12 @@ There is no command timeout: the robot holds the last command it received.
    missing or the upload fails with "permission denied", run
    `sudo usermod -aG dialout $USER` and log out and back in.
 
-At boot the USB serial prints `DXL id N not found` for any missing motor and
-then `herover_openrb ready`. Motors must be powered before the OpenRB boots
-(or press reset): a motor absent at boot is skipped until the next reset.
+At boot the OpenRB switches on the motor power (red `DXL` LED) and retries
+any motor that does not answer for up to `DXL_BOOT_WAIT_MS` (3 s). Then the
+USB serial prints `DXL id N not found` for any motor still missing and
+`herover_openrb ready`. A missing motor is skipped until the next reset, and
+commands are only read once this is done. If the board needs a reset press
+after power-on, check the power-up order under Wiring.
 
 ### ESP32 (`firmware/herover_esp32`)
 
