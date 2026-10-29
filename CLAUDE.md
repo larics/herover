@@ -9,8 +9,9 @@ changing anything that crosses a board boundary.
 | Path | What |
 |---|---|
 | `herover/cmd_vel_bridge.py` | ROS 2 node: `/<ns>/cmd_vel` Twist → UDP `CMD <id> vx vy wz` to each robot's ESP32 |
+| `herover/joy_teleop.py`, `launch/joy_teleop.launch.py` | Gamepad (F710) teleop: `joy` → `cmd_vel`, hold LB to drive |
 | `config/robots.yaml` | Robot list for the bridge (id, namespace, ESP32 host) |
-| `test/` | pytest for the bridge (needs a sourced ROS 2: it imports `rclpy`) |
+| `test/` | pytest for the bridge and teleop (needs a sourced ROS 2: they import `rclpy`) |
 | `firmware/herover_esp32/` | ESP32 WiFi link: UDP → UART to the OpenRB |
 | `firmware/herover_openrb/` | OpenRB-150 motor controller: UART/USB lines → mecanum IK → 4× XL430 |
 | `firmware/herover_openrb_motor_test/` | Bench test: each wheel forward/back in turn, no ESP32 |

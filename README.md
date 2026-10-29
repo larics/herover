@@ -151,12 +151,35 @@ match:
 To add a robot: flash its ESP32 with a new `ROBOT_ID`, reserve its IP on the
 router, add the entry to `robots.yaml`, and restart the bridge.
 
-Manual driving:
+Manual driving, keyboard:
 
 ```bash
 ros2 run teleop_twist_keyboard teleop_twist_keyboard \
   --ros-args -r __ns:=/herover_1 -p speed:=0.10 -p turn:=0.5
 ```
+
+Manual driving, gamepad (Logitech F710, back switch on **X**):
+
+```bash
+ros2 launch herover joy_teleop.launch.py                        # herover_1
+ros2 launch herover joy_teleop.launch.py namespace:=herover_2 joy_dev:=0
+```
+
+| Control | Does |
+|---|---|
+| LB (hold) | enable: nothing is sent unless it is held |
+| RB (hold, with LB) | turbo: 0.17 m/s, 0.8 rad/s instead of 0.10 m/s, 0.5 rad/s |
+| left stick | forward/back, strafe left/right |
+| right stick, left/right | turn |
+
+While LB is held, `joy_teleop` publishes at 20 Hz. On release, or if `joy`
+goes quiet for 0.5 s, it sends zeros for 0.5 s and then nothing, so it does
+not override other `cmd_vel` publishers. The zeros are repeated because a
+single lost stop datagram would leave the robot driving. Speeds, axes and
+buttons are node parameters (`speed`, `turn`, `speed_turbo`, `turn_turbo`,
+`axis_vx`, `axis_vy`, `axis_wz`, `enable_button`, `turbo_button`). Check
+another gamepad's indices with `ros2 topic echo /herover_1/joy`. In Docker
+the container needs `/dev/input` (e.g. `-v /dev:/dev`).
 
 ## Bring-up checklist
 

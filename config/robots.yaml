@@ -12,7 +12,7 @@ udp_port: 5005
 robots:
   - id: 1
     namespace: herover_1
-    host: 172.20.185.75   # herover_1's ESP32 (DHCP; reserve it or use USE_STATIC_IP)
+    host: 10.132.224.75   # herover_1's ESP32, MAC 94:54:c5:2e:64:0c (DHCP; reserve it or use USE_STATIC_IP)
   # - id: 2
   #   namespace: herover_2
   #   host: 192.168.1.102   # TODO: herover_2's ESP32 address
