@@ -10,6 +10,8 @@ changing anything that crosses a board boundary.
 |---|---|
 | `herover/cmd_vel_bridge.py` | ROS 2 node: `/<ns>/cmd_vel` Twist → UDP `CMD <id> vx vy wz` to each robot's ESP32 |
 | `herover/joy_teleop.py`, `launch/joy_teleop.launch.py` | Gamepad (F710) teleop: `joy` → `cmd_vel`, hold LB to drive |
+| `herover/pose_filter.py` | Mocap relay (copied from hero_mrs_control_stack): `/poses` → `/<name>/pose` + `/<name>/odom` |
+| `launch/herover.launch.py` | Bridge + pose_filter + (optional) gamepad teleop |
 | `config/robots.yaml` | Robot list for the bridge (id, namespace, ESP32 host) |
 | `test/` | pytest for the bridge and teleop (needs a sourced ROS 2: they import `rclpy`) |
 | `firmware/herover_esp32/` | ESP32 WiFi link: UDP → UART to the OpenRB |

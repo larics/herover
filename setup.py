@@ -31,6 +31,7 @@ setup(
         'console_scripts': [
             'cmd_vel_bridge = herover.cmd_vel_bridge:main',
             'joy_teleop = herover.joy_teleop:main',
+            'pose_filter = herover.pose_filter:main',
         ],
     },
 )

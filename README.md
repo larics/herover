@@ -181,6 +181,51 @@ buttons are node parameters (`speed`, `turn`, `speed_turbo`, `turn_turbo`,
 another gamepad's indices with `ros2 topic echo /herover_1/joy`. In Docker
 the container needs `/dev/input` (e.g. `-v /dev:/dev`).
 
+### Mocap pose and odom
+
+`pose_filter` is the hero_mrs_control_stack node of the same name, copied
+here and extended with odometry. It needs `motion_capture_tracking` running
+(OptiTrack → `/poses`); it does not start it. For each rigid body on
+`/poses`, except names starting with `cf` (Crazyflies), it publishes:
+
+| Topic | Type | Content |
+|---|---|---|
+| `/<name>/pose` | `geometry_msgs/PoseStamped` | the mocap pose, as received |
+| `/<name>/odom` | `nav_msgs/Odometry` | same pose, plus a body-frame twist |
+
+```bash
+ros2 run herover pose_filter
+ros2 run herover pose_filter --ros-args -p publish_pose:=false   # odom only
+```
+
+The OptiTrack rigid body must be named like the robot's namespace
+(`herover_1`). Both topics keep the mocap header (frame `world`). The odom's
+`child_frame_id` is the rigid-body name, and its twist is in that body frame
+(`linear.x` forward, `linear.y` strafe left, `angular.z` CCW). The robots
+send nothing back, so the velocity comes from differencing consecutive mocap
+poses, low-pass filtered (`velocity_tau`, default 0.05 s). If a body is not
+seen for over `max_gap` (0.5 s), the estimate starts again. Covariances are
+zero. Parameters: `exclude_prefixes` (default `[cf]`), `publish_pose`,
+`velocity_tau`, `max_gap`.
+
+Run only one node that publishes `/<name>/pose`. When the stack's
+`multi_agent.launch.py` runs with `support:=true`, its own `pose_filter`
+already does, so start this one with `publish_pose:=false` (odom only).
+
+### Launch everything
+
+```bash
+ros2 launch herover herover.launch.py
+ros2 launch herover herover.launch.py teleop:=false publish_pose:=false
+```
+
+Starts `cmd_vel_bridge`, `pose_filter` and, unless `teleop:=false`, the
+gamepad teleop. Arguments: `config_file` (robots YAML, default the installed
+`robots.yaml`), `publish_pose` (default `true`), `teleop` (default `true`),
+`namespace` (robot the gamepad drives, default `herover_1`), `joy_dev`.
+The bridge sends every `cmd_vel` to the robots, so put them on blocks or
+give them room before launching.
+
 ## Bring-up checklist
 
 0. **Motors alone.** Upload `firmware/herover_openrb_motor_test` with the
@@ -196,7 +241,8 @@ the container needs `/dev/input` (e.g. `-v /dev:/dev`).
 2. **ESP32 → OpenRB.** From the host:
    `echo "CMD 1 0.05 0 0" | nc -u -w0 <esp32-ip> 5005`, then
    `echo "CMD 1 0 0 0" | nc -u -w0 <esp32-ip> 5005`.
-3. **ROS 2.** Run the bridge and teleop as above.
+3. **ROS 2.** Run the bridge and teleop as above, or
+   `ros2 launch herover herover.launch.py`.
 
 ## Units and speeds
 
