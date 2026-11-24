@@ -72,6 +72,37 @@ its publisher is still sending. Stop the publisher before handling it.
   `config.h` picks the defaults per chip (ESP32: RX 16 / TX 17, S2/S3: 18 / 17,
   C3/C6: 4 / 5) and can override them.
 
+## Robot dimensions
+
+The OpenRB needs three dimensions to turn m/s and rad/s into wheel speeds. Set
+them in `firmware/herover_openrb/config.h`, in metres:
+
+![herover dimensions: wheel diameter A, wheelbase B, track width C](docs/robot_dimensions.svg)
+
+| Measure (mm) | From → to | `config.h` (m) | Measured | Used in |
+|---|---|---|---|---|
+| **A**: wheel diameter | across the outside of the rollers | `WHEEL_RADIUS_M` = A / 2 / 1000 | 79 → `0.0395f` | `to_rpm = 60 / (2π · radius)`: every motion. Too small: robot moves faster than commanded |
+| **B**: wheelbase | front axle centre → rear axle centre | `HALF_WHEELBASE_M` (lx) = B / 2 / 1000 | 122 → `0.061f` | `k = lx + ly`: turning only. Too small: robot turns slower than commanded |
+| **C**: track width | middle of left wheel → middle of right wheel | `HALF_TRACK_M` (ly) = C / 2 / 1000 | 200 → `0.100f` | `k = lx + ly`: as for B |
+
+The wheel speeds in rpm are then (`mecanumIK` in
+`firmware/herover_openrb/mecanum.h`):
+
+```
+FL = (vx − vy − k·wz) · to_rpm        FR = (vx + vy + k·wz) · to_rpm
+RL = (vx + vy − k·wz) · to_rpm        RR = (vx − vy + k·wz) · to_rpm
+```
+
+- Measure A most carefully: 1 mm of radius on a 39.5 mm wheel is about
+  2.5 % of speed. To check it, roll the robot straight for 10 wheel turns with the
+  motors off: A = distance / (10 · π).
+- Only lx + ly enters the kinematics, so 1-2 mm in B or C hardly matters.
+- The easiest way to get C is outer edge to outer edge minus one wheel width.
+- Seen from above, the rollers must form an X as drawn. Otherwise strafing or
+  turning comes out wrong.
+- The mocap rigid body should have its pivot at the robot centre and its x
+  axis forward, so `/<name>/odom` can be compared with the commands.
+
 ## Flashing
 
 ### OpenRB-150 (`firmware/herover_openrb`)
@@ -87,10 +118,10 @@ its publisher is still sending. Stop the publisher before handling it.
    **3 front-left, 4 front-right, 1 rear-left, 2 rear-right**, baud 1 Mbps
    (they ship at 57600), Protocol 2.0. A different baud works too if
    `DXL_BAUD` in both OpenRB sketches matches it.
-3. Fill in the `TODO measure` geometry in `config.h`: `WHEEL_RADIUS_M`,
-   `HALF_WHEELBASE_M` (centre to axle), `HALF_TRACK_M` (centre to wheel), and
-   `MAX_WHEEL_RPM` for your supply voltage (keep it below the motors'
-   Velocity Limit, 60.7 rpm by default).
+3. Check the geometry in `config.h` (see
+   [Robot dimensions](#robot-dimensions)) and set `MAX_WHEEL_RPM` for your
+   supply voltage (keep it below the motors' Velocity Limit, 60.7 rpm by
+   default).
 4. Open `herover_openrb.ino`, select board **OpenRB-150** on its port
    (`/dev/ttyACM0` or similar on Linux), upload. On Linux, if the port is
    missing or the upload fails with "permission denied", run
@@ -273,7 +304,7 @@ send commands of its own in between.
 
 Commands are real SI units now: `speed: 0.25` in a stack config means
 0.25 m/s. The top speed is `MAX_WHEEL_RPM · 2π · WHEEL_RADIUS_M / 60`
-(about 0.17 m/s with the placeholder 30 mm wheel at 55 rpm). Faster commands are
+(about 0.19 m/s with the 79 mm wheel at 45 rpm). Faster commands are
 scaled down on all four wheels together, keeping the direction of travel.
 
 ## Replacing the ESP32 with a Raspberry Pi

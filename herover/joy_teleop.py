@@ -33,7 +33,7 @@ F710_DEFAULTS = {
     'turbo_button': 5,    # RB; -1 disables turbo
     'speed': 0.10,        # m/s at full stick
     'turn': 0.5,          # rad/s at full stick
-    'speed_turbo': 0.17,  # about the firmware's top speed (README: Units and speeds)
+    'speed_turbo': 0.17,  # below the firmware's top speed (README: Units and speeds)
     'turn_turbo': 0.8,
 }
 

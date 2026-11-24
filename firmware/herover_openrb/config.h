@@ -4,17 +4,19 @@
 
 // ---------------- geometry (SI) ----------------
 // Used by the mecanum inverse kinematics to turn a body-frame twist (m/s,
-// rad/s) into wheel speeds. Measure on the robot.
-#define WHEEL_RADIUS_M    0.030f  // TODO measure: wheel radius (m)
-#define HALF_WHEELBASE_M  0.100f  // TODO measure: lx, centre -> front/rear axle (m)
-#define HALF_TRACK_M      0.100f  // TODO measure: ly, centre -> left/right wheel (m)
+// rad/s) into wheel speeds. Measured on the robot (README: Robot dimensions).
+#define WHEEL_RADIUS_M    0.0395f  // wheel diameter 79 mm / 2
+#define HALF_WHEELBASE_M  0.061f   // lx, centre -> front/rear axle: 122 mm / 2
+#define HALF_TRACK_M      0.100f   // ly, centre -> left/right wheel: 200 mm / 2
 
 // Wheel speed ceiling (rpm). Any command needing more is scaled down on all
 // four wheels together, so the direction of travel is kept. XL430-W250 no-load
 // speed is ~57 rpm at 11.1 V (~61 rpm at 12 V). Must stay below the motors'
 // Velocity Limit register (factory 265 x 0.229 = 60.7 rpm): an X-series motor
-// rejects a Goal Velocity above it. TODO: set from your supply voltage.
-#define MAX_WHEEL_RPM     55.0f
+// rejects a Goal Velocity above it. 45 is meant to stay reachable under load
+// on a nearly empty 3S battery (estimated, not measured), so that no wheel
+// falls behind the others.
+#define MAX_WHEEL_RPM     45.0f
 
 // ---------------- motors ----------------
 // Same ids as the old Arduino/AX-12A build. Right side is mounted mirrored,

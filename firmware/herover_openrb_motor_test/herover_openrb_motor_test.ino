@@ -28,7 +28,7 @@
 #define DXL_BAUD     1000000
 
 // ---------------- test settings ----------------
-#define TEST_RPM       40.0f  // well below the 55 rpm limit of the main
+#define TEST_RPM       40.0f  // below the 45 rpm limit of the main
 #define RUN_MS         2000   // each direction
 #define PAUSE_MS       1000   // stopped between phases
 #define START_DELAY_MS 3000   // time to step back after reset
