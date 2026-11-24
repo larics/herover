@@ -10,6 +10,10 @@
 // and from USB Serial (bench testing from a serial monitor). Every
 // valid line is applied, including one identical to the previous. Nothing is
 // ever written back to CMD_SERIAL; diagnostics go to USB only.
+//
+// Watchdog: when no valid line has arrived for CMD_TIMEOUT_MS the wheels are
+// stopped, so a sender must repeat its command to keep the robot moving. This
+// covers a crashed host, a lost WiFi link and a crashed or unplugged ESP32.
 
 #include <Dynamixel2Arduino.h>
 #include <math.h>
@@ -53,6 +57,11 @@ struct LineReader {
 LineReader cmdLink = {&CMD_SERIAL, {0}, 0, false};
 LineReader usbLink = {&Serial, {0}, 0, false};
 
+// Watchdog: set by every valid command, cleared once the timeout stop has
+// reached every motor. Off at boot, where the motors are already at zero.
+bool watchdogArmed = false;
+unsigned long lastCmdMs = 0;
+
 // ---------------- motors ----------------
 
 // Velocity mode, torque on, stopped. False if the motor does not answer.
@@ -93,15 +102,17 @@ void setupMotors() {
   }
 }
 
-void applyTwist(float vx, float vy, float wz) {
+// True if every present motor acknowledged its new speed.
+bool applyTwist(float vx, float vy, float wz) {
   const WheelRpm w = mecanumIK(vx, vy, wz, WHEEL_RADIUS_M, HALF_WHEELBASE_M,
                                HALF_TRACK_M, MAX_WHEEL_RPM);
   const float rpm[4] = {w.fl, w.fr, w.rl, w.rr};
 
+  bool ok = true;
   for (int i = 0; i < 4; i++) {
     if (!present[i]) continue;  // skip absent motors: each write would wait out a timeout
     const float v = MOTORS[i].invert ? -rpm[i] : rpm[i];
-    dxl.setGoalVelocity(MOTORS[i].id, v, UNIT_RPM);
+    if (!dxl.setGoalVelocity(MOTORS[i].id, v, UNIT_RPM)) ok = false;
   }
 
 #if DEBUG_PRINT
@@ -114,6 +125,25 @@ void applyTwist(float vx, float vy, float wz) {
   Serial.print(w.rl, 1); Serial.print(' ');
   Serial.println(w.rr, 1);
 #endif
+  return ok;
+}
+
+// ---------------- watchdog ----------------
+
+void commandReceived() {
+  lastCmdMs = millis();
+  watchdogArmed = true;
+}
+
+// Stop the wheels once the commands have stopped. Stays armed, and so tries
+// again on the next loop, while any motor has not acknowledged the stop.
+void checkWatchdog() {
+  if (!watchdogArmed || millis() - lastCmdMs < CMD_TIMEOUT_MS) return;
+  if (!applyTwist(0.0f, 0.0f, 0.0f)) return;
+  watchdogArmed = false;
+  Serial.print("no command for ");
+  Serial.print(CMD_TIMEOUT_MS);
+  Serial.println(" ms: stopped");
 }
 
 // ---------------- parsing ----------------
@@ -141,8 +171,10 @@ void processLine(char* line) {
     // Exactly three numbers. This also rejects the WiFi-side
     // "CMD <id> vx vy wz" form, which would otherwise read the id as vx.
     if (strtok(NULL, SEP) != NULL) return;
+    commandReceived();
     applyTwist(vx, vy, wz);
   } else if (strcmp(cmd, "STOP") == 0) {
+    commandReceived();
     applyTwist(0.0f, 0.0f, 0.0f);
   }
 }
@@ -185,4 +217,5 @@ void setup() {
 void loop() {
   poll(cmdLink);
   poll(usbLink);
+  checkWatchdog();
 }

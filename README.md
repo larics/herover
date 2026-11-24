@@ -34,7 +34,21 @@ frame (x forward, y left, z counter-clockwise), exactly as in the Twist
 | USB → OpenRB (bench) | `CMD <vx> <vy> <wz>\n` or `STOP\n` | type into a serial monitor at 115200 |
 
 Malformed lines (missing/extra fields, non-numbers, NaN/inf) are dropped.
-There is no command timeout: the robot holds the last command it received.
+
+**Watchdog.** If the OpenRB gets no valid line (UART or USB) for
+`CMD_TIMEOUT_MS` (2 s, `firmware/herover_openrb/config.h`), it stops the
+wheels and prints `no command for 2000 ms: stopped` on its USB serial. A
+sender therefore has to repeat its command to keep the robot moving. This
+covers a crashed host, a stopped bridge, a lost WiFi link, and a crashed or
+unplugged ESP32.
+
+The bridge adds the other half: when a robot's `cmd_vel` has been quiet for
+2 s (`cmd_timeout`), it sends zeros, so the robot also stops when the publisher
+dies while the bridge keeps running. Publish faster than 1 Hz to keep a robot
+moving; unlike in hero_sim, one `cmd_vel` message moves it for only 2 s.
+
+After an outage (WiFi back, robot power-cycled) a robot drives again at once if
+its publisher is still sending. Stop the publisher before handling it.
 
 ## Wiring
 
@@ -123,9 +137,13 @@ built without it, run `rm -rf build/herover install/herover` once first.
 Set each robot's `host` (the ESP32 IP) in `config/robots.yaml`. The bridge
 subscribes to `/<namespace>/cmd_vel`, which matches what the
 hero_mrs_control_stack `Herover` agent publishes (`/herover_N/cmd_vel`). Each
-Twist is sent immediately as one datagram. An unresolvable host is retried
-every 2 s, so robots can come up after the bridge. The bridge logs a
-per-robot count every 5 s while sending.
+Twist is sent immediately as one datagram. Between Twists the last one is
+re-sent at `resend_rate` (default 10 Hz), which replaces lost datagrams. After
+`cmd_timeout` (default 2 s) without a new Twist, zeros are sent for about 1 s
+and then nothing. With `-p resend_rate:=0.0` neither happens and only the
+robot's watchdog stops it. An unresolvable host is retried every 2 s, so robots
+can come up after the bridge. The bridge logs a per-robot count of Twists sent
+(re-sends not counted) every 5 s while they arrive.
 
 ### Robot addressing
 
@@ -174,8 +192,8 @@ ros2 launch herover joy_teleop.launch.py namespace:=herover_2 joy_dev:=0
 
 While LB is held, `joy_teleop` publishes at 20 Hz. On release, or if `joy`
 goes quiet for 0.5 s, it sends zeros for 0.5 s and then nothing, so it does
-not override other `cmd_vel` publishers. The zeros are repeated because a
-single lost stop datagram would leave the robot driving. Speeds, axes and
+not override other `cmd_vel` publishers. The zeros are repeated so a stop does
+not depend on a single message. Speeds, axes and
 buttons are node parameters (`speed`, `turn`, `speed_turbo`, `turn_turbo`,
 `axis_vx`, `axis_vy`, `axis_wz`, `enable_button`, `turbo_button`). Check
 another gamepad's indices with `ros2 topic echo /herover_1/joy`. In Docker
@@ -228,6 +246,10 @@ give them room before launching.
 
 ## Bring-up checklist
 
+In steps 1 and 2 each command runs for 2 s and then the watchdog stops the
+wheels; repeat it to keep them turning. Stop the bridge first, so it does not
+send commands of its own in between.
+
 0. **Motors alone.** Upload `firmware/herover_openrb_motor_test` with the
    robot on blocks. After reset it runs each wheel forward then backward,
    one at a time (FL, FR, RL, RR), and then stops. Each wheel should roll the
@@ -243,6 +265,9 @@ give them room before launching.
    `echo "CMD 1 0 0 0" | nc -u -w0 <esp32-ip> 5005`.
 3. **ROS 2.** Run the bridge and teleop as above, or
    `ros2 launch herover herover.launch.py`.
+4. **Watchdog.** With the robot on blocks, drive it slowly and stop the bridge
+   (Ctrl-C) while the wheels turn. They must stop within about 2 s. Repeat by
+   cutting the ESP32's power, and by stopping only the `cmd_vel` publisher.
 
 ## Units and speeds
 
@@ -256,4 +281,5 @@ scaled down on all four wheels together, keeping the direction of travel.
 The UART line protocol is the contract. An RPi wired to the same OpenRB
 header (TX → RX, GND) only has to write `CMD <vx> <vy> <wz>\n` at 115200,
 e.g. a ROS 2 node on the RPi subscribing to `cmd_vel` and writing to
-`/dev/serial0`. The OpenRB firmware stays as it is.
+`/dev/serial0`. It must repeat the last command (10 Hz, like the bridge) or the
+watchdog stops the robot. The OpenRB firmware stays as it is.

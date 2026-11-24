@@ -41,5 +41,11 @@
 #define CMD_SERIAL   Serial3
 #define CMD_BAUD     115200
 
+// Watchdog: with no valid command (from CMD_SERIAL or USB) for this long, the
+// wheels are stopped. Keep it many times the sender's repeat period (the
+// cmd_vel_bridge re-sends at 10 Hz), so a few lost datagrams don't stop the
+// robot.
+#define CMD_TIMEOUT_MS 2000
+
 // 1 = echo every applied command on USB Serial (never on CMD_SERIAL).
 #define DEBUG_PRINT  0

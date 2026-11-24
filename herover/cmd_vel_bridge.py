@@ -9,8 +9,14 @@ ESP32::
 
 Units are the Twist's own (m/s, m/s, rad/s; body frame, REP-103). The robot
 does the wheel kinematics. Every message is sent — a command identical to
-the previous one is not suppressed — so a datagram lost on WiFi is replaced
-by the next one. The robots never reply.
+the previous one is not suppressed. The robots never reply.
+
+Between messages the bridge re-sends each robot's last Twist at
+``resend_rate`` Hz, so a datagram lost on WiFi is replaced by the next one.
+When no new Twist has arrived for ``cmd_timeout`` s it sends zeros instead,
+``STOP_RESENDS`` times, and then nothing: a robot stops when its publisher
+does. If the bridge, host or WiFi goes away, the robot's own watchdog stops it
+(``CMD_TIMEOUT_MS`` in firmware/herover_openrb/config.h).
 """
 
 import os
@@ -24,6 +30,9 @@ from geometry_msgs.msg import Twist
 from rclpy.node import Node
 
 DEFAULT_UDP_PORT = 5005
+DEFAULT_RESEND_HZ = 10.0  # many per CMD_TIMEOUT_MS (firmware/herover_openrb/config.h)
+DEFAULT_CMD_TIMEOUT_S = 2.0
+STOP_RESENDS = 10         # zeros sent once cmd_vel has gone quiet
 RESOLVE_RETRY_S = 2.0
 STATS_PERIOD_S = 5.0
 
@@ -77,7 +86,7 @@ def load_robots(path):
 
 
 class _Robot:
-    """Per-robot send state: lazily resolved address and counters."""
+    """Per-robot send state: lazily resolved address, last command, counters."""
 
     def __init__(self, cfg):
         self.id = cfg['id']
@@ -86,7 +95,37 @@ class _Robot:
         self.port = cfg['port']
         self.addr = None
         self.next_resolve = 0.0
+        self.payload = None   # last command as sent on the wire
+        self.fresh = False    # payload is newer than the last resend tick
+        self.cmd_time = 0.0   # time.monotonic() of the last command
+        self.zeros_left = 0   # zeros still to send once it has timed out
         self.sent = 0
+
+    def set_command(self, payload, now):
+        self.payload = payload
+        self.fresh = True
+        self.cmd_time = now
+        self.zeros_left = STOP_RESENDS
+
+    def take_resend(self, now, timeout):
+        """Payload to send on this resend tick, or None.
+
+        The last command while it is younger than ``timeout``, then a limited
+        number of zeros, then None. Also None if a new command went out since
+        the previous tick. Uses only a cached address: looking one up here
+        could block, and a robot never reached has nothing to stop.
+        """
+        if self.fresh:
+            self.fresh = False
+            return None
+        if self.payload is None or self.addr is None:
+            return None
+        if now - self.cmd_time < timeout:
+            return self.payload
+        if self.zeros_left == 0:
+            return None
+        self.zeros_left -= 1
+        return format_command(self.id, 0.0, 0.0, 0.0)
 
     def resolve(self, logger):
         """Cached (ip, port), or None. Retries at most every RESOLVE_RETRY_S."""
@@ -116,6 +155,8 @@ class CmdVelBridge(Node):
         config_file = self.get_parameter('config_file').value or default_cfg
 
         robots, _ = load_robots(config_file)
+        resend_rate = self.declare_parameter('resend_rate', DEFAULT_RESEND_HZ).value
+        self.cmd_timeout = self.declare_parameter('cmd_timeout', DEFAULT_CMD_TIMEOUT_S).value
 
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.setblocking(False)
@@ -128,23 +169,43 @@ class CmdVelBridge(Node):
                 Twist, topic, lambda msg, r=robot: self.on_twist(msg, r), 10)
             self.get_logger().info(f'robot {robot.id}: {topic} -> {robot.host}:{robot.port}')
 
+        if resend_rate > 0.0:
+            self.create_timer(1.0 / resend_rate, self.resend)
+        else:
+            self.get_logger().warning(
+                'resend_rate <= 0: nothing is re-sent and cmd_timeout is off; '
+                'only a robot with its own watchdog stops when cmd_vel does')
         self.create_timer(STATS_PERIOD_S, self.log_stats)
         self.get_logger().info(f'loaded {len(self.robots)} robot(s) from {config_file}')
 
     def on_twist(self, msg, robot):
-        addr = robot.resolve(self.get_logger())
-        if addr is None:
-            return
         payload = format_command(robot.id, msg.linear.x, msg.linear.y, msg.angular.z)
+        # Kept even if this send fails, so what gets re-sent is always the
+        # newest command and never the one before it.
+        robot.set_command(payload, time.monotonic())
+        if robot.resolve(self.get_logger()) is None:
+            return
+        if self.send(robot, payload):
+            robot.sent += 1
+            self.get_logger().debug(f'{robot.namespace}: {payload.decode().strip()}')
+
+    def resend(self):
+        now = time.monotonic()
+        for robot in self.robots:
+            payload = robot.take_resend(now, self.cmd_timeout)
+            if payload is not None:
+                self.send(robot, payload)
+
+    def send(self, robot, payload):
+        """Send one datagram to the robot's resolved address. False if it failed."""
         try:
-            self.sock.sendto(payload, addr)
+            self.sock.sendto(payload, robot.addr)
         except OSError as e:
             self.get_logger().warning(
-                f'{robot.namespace}: send to {addr[0]} failed: {e}',
+                f'{robot.namespace}: send to {robot.addr[0]} failed: {e}',
                 throttle_duration_sec=2.0)
-            return
-        robot.sent += 1
-        self.get_logger().debug(f'{robot.namespace}: {payload.decode().strip()}')
+            return False
+        return True
 
     def log_stats(self):
         counts = [(r.namespace, r.sent) for r in self.robots if r.sent]

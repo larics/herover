@@ -13,9 +13,8 @@ names are relative, so the namespace picks the robot
 While enabled, a Twist goes out every 1/``rate`` s. When LB is released, or
 ``joy`` goes quiet for ``joy_timeout`` s (driver stopped, receiver
 unplugged), zero Twists are sent for ``stop_repeat_s`` and then nothing, so
-other cmd_vel publishers are not overridden. The zeros are repeated because
-the link is UDP and the robot keeps its last command: one lost stop would
-leave it driving.
+other cmd_vel publishers are not overridden. The zeros are repeated so that a
+stop does not depend on a single message.
 """
 
 import time
